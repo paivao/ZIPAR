@@ -1,11 +1,9 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-# Author : AloneMonkey
-# blog: www.alonemonkey.com
+# Author: Rafael Paiva (paivao)
+# Forked from https://github.com/AloneMonkey/frida-ios-dump
 
-from __future__ import print_function
-from __future__ import unicode_literals
 import sys
 import codecs
 import frida
@@ -23,19 +21,14 @@ from scp import SCPClient
 from tqdm import tqdm
 import traceback
 
-IS_PY2 = sys.version_info[0] < 3
-if IS_PY2:
-    reload(sys)
-    sys.setdefaultencoding('utf8')
-
 script_dir = os.path.dirname(os.path.realpath(__file__))
 
 DUMP_JS = os.path.join(script_dir, 'dump.js')
 
-User = 'root'
-Password = 'alpine'
-Host = 'localhost'
-Port = 2222
+DEFAULT_USER = 'root'
+DEFAULT_PASS = 'alpine'
+DEFAULT_HOST = 'localhost'
+DEFAULT_PORT = 2222
 KeyFileName = None
 
 TEMP_DIR = tempfile.gettempdir()
@@ -45,11 +38,8 @@ file_dict = {}
 
 finished = threading.Event()
 
-
 def get_usb_iphone():
     Type = 'usb'
-    if int(frida.__version__.split('.')[0]) < 12:
-        Type = 'tether'
     device_manager = frida.get_device_manager()
     changed = threading.Event()
 
@@ -289,69 +279,70 @@ def start_dump(session, ipa_name):
         session.detach()
 
 
-if __name__ == '__main__':
+def main() -> int:
     parser = argparse.ArgumentParser(description='frida-ios-dump (by AloneMonkey v2.0)')
     parser.add_argument('-l', '--list', dest='list_applications', action='store_true', help='List the installed apps')
     parser.add_argument('-o', '--output', dest='output_ipa', help='Specify name of the decrypted IPA')
-    parser.add_argument('-H', '--host', dest='ssh_host', help='Specify SSH hostname')
-    parser.add_argument('-p', '--port', dest='ssh_port', help='Specify SSH port')
-    parser.add_argument('-u', '--user', dest='ssh_user', help='Specify SSH username')
-    parser.add_argument('-P', '--password', dest='ssh_password', help='Specify SSH password')
-    parser.add_argument('-K', '--key_filename', dest='ssh_key_filename', help='Specify SSH private key file path')
+    parser.add_argument('-H', '--host', dest='hostname', help='Specify SSH hostname', default=DEFAULT_HOST)
+    parser.add_argument('-p', '--port', dest='port', help='Specify SSH port', default=DEFAULT_PORT)
+    parser.add_argument('-u', '--user', dest='username', help='Specify SSH username', default=DEFAULT_USER)
+    parser.add_argument('-P', '--password', dest='password', help='Specify SSH password', default=DEFAULT_PASS)
+    parser.add_argument('--ask', dest='ask_password', action='store_true', help='Prompt for SSH password')
+    parser.add_argument('-K', '--key_filename', dest='key_filename', help='Specify SSH private key file path')
     parser.add_argument('target', nargs='?', help='Bundle identifier or display name of the target app')
 
     args = parser.parse_args()
 
-    exit_code = 0
     ssh = None
 
-    if not len(sys.argv[1:]):
+    if len(sys.argv) < 2:
         parser.print_help()
-        sys.exit(exit_code)
+        return 0
 
     device = get_usb_iphone()
 
     if args.list_applications:
         list_applications(device)
-    else:
-        name_or_bundleid = args.target
-        output_ipa = args.output_ipa
-        # update ssh args
-        if args.ssh_host:
-            Host = args.ssh_host
-        if args.ssh_port:
-            Port = int(args.ssh_port)
-        if args.ssh_user:
-            User = args.ssh_user
-        if args.ssh_password:
-            Password = args.ssh_password
-        if args.ssh_key_filename:
-            KeyFileName = args.ssh_key_filename
+        return 0
 
-        try:
-            ssh = paramiko.SSHClient()
-            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            ssh.connect(Host, port=Port, username=User, password=Password, key_filename=KeyFileName)
+    name_or_bundleid = args.target
+    output_ipa = args.output_ipa
+    # update ssh args
+    if args.ssh_host:
+        Host = args.ssh_host
+    if args.ssh_port:
+        Port = int(args.ssh_port)
+    if args.ssh_user:
+        User = args.ssh_user
+    if args.ssh_password:
+        Password = args.ssh_password
+    if args.ssh_key_filename:
+        KeyFileName = args.ssh_key_filename
 
-            create_dir(PAYLOAD_PATH)
-            (session, display_name, bundle_identifier) = open_target_app(device, name_or_bundleid)
-            if output_ipa is None:
-                output_ipa = display_name
-            output_ipa = re.sub('\.ipa$', '', output_ipa)
-            if session:
-                start_dump(session, output_ipa)
-        except paramiko.ssh_exception.NoValidConnectionsError as e:
-            print(e)
-            print('Try specifying -H/--hostname and/or -p/--port')
-            exit_code = 1
-        except paramiko.AuthenticationException as e:
-            print(e)
-            print('Try specifying -u/--username and/or -P/--password')
-            exit_code = 1
-        except Exception as e:
-            print('*** Caught exception: %s: %s' % (e.__class__, e))
-            traceback.print_exc()
-            exit_code = 1
+    try:
+        ssh = paramiko.SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        ssh.connect(args.ssh_host, port=args.ssh_port, username=User, password=Password, key_filename=KeyFileName)
+
+        create_dir(PAYLOAD_PATH)
+        (session, display_name, bundle_identifier) = open_target_app(device, name_or_bundleid)
+        if output_ipa is None:
+            output_ipa = display_name
+        output_ipa = re.sub('\.ipa$', '', output_ipa)
+        if session:
+            start_dump(session, output_ipa)
+    except paramiko.ssh_exception.NoValidConnectionsError as e:
+        print(e)
+        print('Try specifying -H/--hostname and/or -p/--port')
+        exit_code = 1
+    except paramiko.AuthenticationException as e:
+        print(e)
+        print('Try specifying -u/--username and/or -P/--password')
+        exit_code = 1
+    except Exception as e:
+        print('*** Caught exception: %s: %s' % (e.__class__, e))
+        traceback.print_exc()
+        exit_code = 1
 
     if ssh:
         ssh.close()
@@ -360,3 +351,7 @@ if __name__ == '__main__':
         shutil.rmtree(PAYLOAD_PATH)
 
     sys.exit(exit_code)
+
+
+if __name__ == '__main__':
+    sys.exit(main())

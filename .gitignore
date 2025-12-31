@@ -1,5 +1,1 @@
-.DS_Store
-.idea
-*.ipa
-
-frida/
+/node_modules/
