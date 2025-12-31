@@ -6,6 +6,7 @@
 
 import sys
 import codecs
+from typing import List
 import frida
 import threading
 import os
@@ -15,6 +16,7 @@ import argparse
 import tempfile
 import subprocess
 import re
+from frida.core import CompilerOutputFormat
 import paramiko
 from paramiko import SSHClient
 from scp import SCPClient
@@ -88,11 +90,7 @@ def on_message(message, data):
     last_sent = [0]
 
     def progress(filename, size, sent):
-        baseName = os.path.basename(filename)
-        if IS_PY2 or isinstance(baseName, bytes):
-            t.desc = baseName.decode("utf-8")
-        else:
-            t.desc = baseName
+        t.desc = os.path.basename(filename)
         t.total = size
         t.update(sent - last_sent[0])
         last_sent[0] = 0 if size == sent else sent
@@ -140,88 +138,31 @@ def on_message(message, data):
             finished.set()
     t.close()
 
-def compare_applications(a, b):
-    a_is_running = a.pid != 0
-    b_is_running = b.pid != 0
-    if a_is_running == b_is_running:
-        if a.name > b.name:
-            return 1
-        elif a.name < b.name:
-            return -1
-        else:
-            return 0
-    elif a_is_running:
-        return -1
-    else:
-        return 1
 
+def list_applications(device: frida._frida.Device) -> None:
+    applications = device.enumerate_applications()
 
-def cmp_to_key(mycmp):
-    """Convert a cmp= function into a key= function"""
-
-    class K:
-        def __init__(self, obj):
-            self.obj = obj
-
-        def __lt__(self, other):
-            return mycmp(self.obj, other.obj) < 0
-
-        def __gt__(self, other):
-            return mycmp(self.obj, other.obj) > 0
-
-        def __eq__(self, other):
-            return mycmp(self.obj, other.obj) == 0
-
-        def __le__(self, other):
-            return mycmp(self.obj, other.obj) <= 0
-
-        def __ge__(self, other):
-            return mycmp(self.obj, other.obj) >= 0
-
-        def __ne__(self, other):
-            return mycmp(self.obj, other.obj) != 0
-
-    return K
-
-
-def get_applications(device):
-    try:
-        applications = device.enumerate_applications()
-    except Exception as e:
-        sys.exit('Failed to enumerate applications: %s' % e)
-
-    return applications
-
-
-def list_applications(device):
-    applications = get_applications(device)
-
+    # Variable names are: (PID/Name/Identifier) Column With
     if len(applications) > 0:
-        pid_column_width = max(map(lambda app: len('{}'.format(app.pid)), applications))
-        name_column_width = max(map(lambda app: len(app.name), applications))
-        identifier_column_width = max(map(lambda app: len(app.identifier), applications))
+        pcw = max(map(lambda app: len(str(app.pid)), applications))
+        ncw = max(map(lambda app: len(app.name), applications))
+        icw = max(map(lambda app: len(app.identifier), applications))
     else:
-        pid_column_width = 0
-        name_column_width = 0
-        identifier_column_width = 0
+        pcw = 0
+        ncw = 0
+        icw = 0
 
-    header_format = '%' + str(pid_column_width) + 's  ' + '%-' + str(name_column_width) + 's  ' + '%-' + str(
-        identifier_column_width) + 's'
-    print(header_format % ('PID', 'Name', 'Identifier'))
-    print('%s  %s  %s' % (pid_column_width * '-', name_column_width * '-', identifier_column_width * '-'))
-    line_format = '%' + str(pid_column_width) + 's  ' + '%-' + str(name_column_width) + 's  ' + '%-' + str(
-        identifier_column_width) + 's'
-    for application in sorted(applications, key=cmp_to_key(compare_applications)):
-        if application.pid == 0:
-            print(line_format % ('-', application.name, application.identifier))
-        else:
-            print(line_format % (application.pid, application.name, application.identifier))
+    print(f"{'PID':>pcw} {'Name':<ncw} {'Identifier':<icw}")
+    print('-'*pcw, '-'*ncw, '-'*icw)
+    # For comparison, first sort by running apps (pid != 0), and then by name
+    # If you ask why the comparison is inverted, it is because, with booleans, False comes before True
+    for app in sorted(applications, key=lambda app: (app.pid == 0, app.name)):
+        print(f"{app.pid if app.pid != 0 else '-':>pcw} {app.name:<ncw} {app.identifier:<icw}")
 
 
-def load_js_file(session, filename):
-    source = ''
-    with codecs.open(filename, 'r', 'utf-8') as f:
-        source = source + f.read()
+def load_script(session):
+    compiler = frida.Compiler()
+    source = compiler.build(f"{script_dir}/agent/index.ts")
     script = session.create_script(source)
     script.on('message', on_message)
     script.load()
@@ -240,7 +181,7 @@ def create_dir(path):
         print(err)
 
 
-def open_target_app(device, name_or_bundleid):
+def open_target_app(device: frida.core.Device, name_or_bundleid: str):
     print('Start the target app {}'.format(name_or_bundleid))
 
     pid = ''
