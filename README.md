@@ -1,6 +1,7 @@
-# frida-ios-dump
-Pull a decrypted IPA from a jailbroken device
+# frida-ios-dump-2
+This repository is a fork from AloneMonkey's [frida-ios-dump](https://github.com/AloneMonkey/frida-ios-dump).
 
+It pulls a decrypted IPA from a jailbroken device.
 
 ## Usage
 
@@ -42,7 +43,7 @@ Drag to [MonkeyDev](https://github.com/AloneMonkey/MonkeyDev), Happy hacking!
 
 ## Support
 
-Python 2.x and 3.x
+Python 3.x
 
 
 ### issues
