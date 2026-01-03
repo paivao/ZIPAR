@@ -12,7 +12,6 @@ import shutil
 import argparse
 import tempfile
 import traceback
-import zipfile
 import paramiko
 import paramiko.ssh_exception
 #import re
@@ -23,6 +22,7 @@ from getpass import getpass
 from scp import SCPClient
 from tqdm import tqdm
 
+PAYLOAD_PART = 'Payload'
 
 DEFAULT_USER = 'root'
 DEFAULT_PASS = 'alpine'
@@ -78,33 +78,6 @@ def list_applications(device: frida.core.Device) -> None:
         print(f"{app.pid if app.pid != 0 else '-':>pcw} {app.name:<ncw} {app.identifier:<icw}")
 
 
-def generate_ipa(path, display_name):
-    ipa_filename = display_name + '.ipa'
-
-    print('Generating "{}"'.format(ipa_filename))
-    try:
-        app_name = file_dict.pop('app')
-        with zipfile.ZipFile(os.path.join(os.getcwd(), ipa_filename), mode='w', compression=zipfile.ZIP_DEFLATED) as zip:
-            for key, value in file_dict.items():
-                for (dir, _, files) in os.walk(os.path.join(path, key)):
-                    for file in files:
-                        zip.write(os.path.join(dir, file), os.path.join(app_name, value, file))
-
-        #for key, value in file_dict.items():
-        #    from_dir = os.path.join(path, key)
-        #    to_dir = os.path.join(path, app_name, value)
-        #    if key != 'app':
-        #        shutil.move(from_dir, to_dir)
-
-        #target_dir = './' + path
-        #zip_args = ('zip', '-qr', os.path.join(os.getcwd(), ipa_filename), target_dir)
-        #subprocess.check_call(zip_args, cwd=TEMP_DIR)
-        #shutil.rmtree(path)
-    except Exception as e:
-        print(e)
-        finished.set()
-
-
 
 def load_script(session: frida.core.Session, on_message: frida.core.ScriptMessageCallback) -> frida.core.Script:
     compiler = frida.Compiler()
@@ -141,13 +114,12 @@ def open_target_app(device: frida.core.Device, name_or_bundleid: str) -> tuple[f
 def generate_on_message(transport: paramiko.Transport, destination_dir: str) -> frida.core.ScriptMessageCallback:
     def on_message(message: frida.core.ScriptMessage, _: bytes | None) -> None:
         t = tqdm(unit='B',unit_scale=True,unit_divisor=1024,miniters=1)
-        last_sent = [0]
 
         def progress(filename, size, sent):
-            t.desc = os.path.basename(filename)
-            t.total = size
-            t.update(sent - last_sent[0])
-            last_sent[0] = 0 if size == sent else sent
+            t.set_description(os.path.basename(filename))
+            if t.total != size:
+                t.reset(size)
+            t.update(sent - t.n)
 
         if 'payload' in message:
             payload = message['payload']
@@ -196,6 +168,27 @@ def start_dump(session: frida.core.Session, transport: paramiko.Transport, ipa_n
         session.detach()
 
 
+def generate_ipa(path: str, display_name: str) -> None:
+    print(f'Generating "{display_name}.ipa"...')
+    try:
+        app_name = file_dict.pop('app')
+        for key, value in file_dict.items():
+            from_dir = os.path.join(path, key)
+            to_dir = os.path.join(path, app_name, value)
+            shutil.move(from_dir, to_dir)
+
+        shutil.make_archive(display_name, 'zip', os.path.dirname(path))
+        os.rename(f'{display_name}.zip', f'{display_name}.ipa')
+        #target_dir = './' + path
+        #zip_args = ('zip', '-qr', os.path.join(os.getcwd(), ipa_filename), target_dir)
+        #subprocess.check_call(zip_args, cwd=TEMP_DIR)
+        #shutil.rmtree(path)
+    except Exception as e:
+        print(e)
+        finished.set()
+    print(f'Successfully generated "{display_name}.ipa"!')
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description='frida-ios-dump-2 (by Rafael Paiva). Forked from frida-ios-dump (by AloneMonkey v2.0).')
     parser.add_argument('target', nargs='?', help='Bundle identifier or display name of the target app')
@@ -212,7 +205,7 @@ def main() -> int:
 
     args = parser.parse_args()
 
-    if len(sys.argv) < 2 or args.help:
+    if len(sys.argv) < 2:
         parser.print_help()
         return 0
 
@@ -231,6 +224,8 @@ def main() -> int:
 
     try:
         temp_dir = tempfile.mkdtemp()
+        payload_dir = os.path.join(temp_dir, PAYLOAD_PART)
+        os.mkdir(payload_dir)
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.WarningPolicy())
         ssh.connect(args.ssh_host, port=args.ssh_port, username=args.ssh_user, password=ssh_pass, key_filename=args.ssh_key_filename)
@@ -238,16 +233,16 @@ def main() -> int:
         (session, display_name, bundle_identifier) = open_target_app(device, name_or_bundleid)
         if output_ipa is None:
             output_ipa = display_name
-        #output_ipa = re.sub(r'\.ipa$', '', output_ipa)
         output_ipa = output_ipa.removesuffix(".ipa")
+
         if session:
             print(f'Dumping {display_name} ({bundle_identifier}) to {temp_dir}')
             transport = ssh.get_transport()
             if transport is None:
                 raise Exception("could not get SSH transport")
-            start_dump(session, transport, output_ipa, temp_dir)
-
-        ssh.close()
+            start_dump(session, transport, output_ipa, payload_dir)
+        else:
+            print(f'Unable to hook into {display_name}. Try to open it before...')
     except paramiko.ssh_exception.NoValidConnectionsError as e:
         print(f"SSH error: {e}")
         print('Try specifying -H/--hostname and/or -p/--port')
