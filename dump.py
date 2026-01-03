@@ -14,10 +14,6 @@ import tempfile
 import traceback
 import paramiko
 import paramiko.ssh_exception
-#import re
-#import subprocess
-#from frida.core import CompilerOutputFormat
-#from paramiko import SSHClient
 from getpass import getpass
 from scp import SCPClient
 from tqdm import tqdm
@@ -30,11 +26,8 @@ DEFAULT_HOST = 'localhost'
 DEFAULT_PORT = 2222
 DEFAULT_KEY_FILENAME = None
 
-file_dict = {}
 
-finished = threading.Event()
-
-def get_usb_iphone(device_id: str|None):
+def get_usb_iphone(device_id: str|None) -> frida.core.Device:
     TYPE = 'usb'
     device_manager = frida.get_device_manager()
     changed = threading.Event()
@@ -70,12 +63,12 @@ def list_applications(device: frida.core.Device) -> None:
         ncw = 0
         icw = 0
 
-    print(f"{'PID':>pcw} {'Name':<ncw} {'Identifier':<icw}")
+    print(f"{'PID':>{pcw}} {'Name':<{ncw}} {'Identifier':<{icw}}")
     print('-'*pcw, '-'*ncw, '-'*icw)
     # For comparison, first sort by running apps (pid != 0), and then by name
     # If you ask why the comparison is inverted, it is because, with booleans, False comes before True
     for app in sorted(applications, key=lambda app: (app.pid == 0, app.name)):
-        print(f"{app.pid if app.pid != 0 else '-':>pcw} {app.name:<ncw} {app.identifier:<icw}")
+        print(f"{app.pid if app.pid != 0 else '-':>{pcw}} {app.name:<{ncw}} {app.identifier:<{icw}}")
 
 
 
@@ -111,12 +104,12 @@ def open_target_app(device: frida.core.Device, name_or_bundleid: str) -> tuple[f
 
     return session, display_name, bundle_identifier
 
-def generate_on_message(transport: paramiko.Transport, destination_dir: str) -> frida.core.ScriptMessageCallback:
+def generate_on_message(transport: paramiko.Transport, destination_dir: str, finished: threading.Event, file_dict: dict[str, str]) -> frida.core.ScriptMessageCallback:
     def on_message(message: frida.core.ScriptMessage, _: bytes | None) -> None:
         t = tqdm(unit='B',unit_scale=True,unit_divisor=1024,miniters=1)
 
-        def progress(filename, size, sent):
-            t.set_description(os.path.basename(filename))
+        def on_progress(filename: bytes, size: int, sent: int) -> None:
+            t.set_description(os.path.basename(filename.decode()))
             if t.total != size:
                 t.reset(size)
             t.update(sent - t.n)
@@ -130,7 +123,7 @@ def generate_on_message(transport: paramiko.Transport, destination_dir: str) -> 
                 scp_from = dump_path
                 scp_to = destination_dir + '/'
 
-                with SCPClient(transport, progress = progress, socket_timeout = 60) as scp:
+                with SCPClient(transport, progress = on_progress, socket_timeout = 60) as scp:
                     scp.get(scp_from, scp_to)
 
                 os.chmod(os.path.join(destination_dir, os.path.basename(dump_path)), 0o755)
@@ -143,7 +136,7 @@ def generate_on_message(transport: paramiko.Transport, destination_dir: str) -> 
 
                 scp_from = app_path
                 scp_to = destination_dir + '/'
-                with SCPClient(transport, progress = progress, socket_timeout = 60) as scp:
+                with SCPClient(transport, progress = on_progress, socket_timeout = 60) as scp:
                     scp.get(scp_from, scp_to, recursive=True)
 
                 os.chmod(os.path.join(destination_dir, os.path.basename(app_path)), 0o755)
@@ -158,18 +151,20 @@ def generate_on_message(transport: paramiko.Transport, destination_dir: str) -> 
 
 
 def start_dump(session: frida.core.Session, transport: paramiko.Transport, ipa_name: str, destination_dir: str) -> None:
-    script = load_script(session, generate_on_message(transport, destination_dir))
+    finished = threading.Event()
+    file_dict: dict[str, str] = {}
+    script = load_script(session, generate_on_message(transport, destination_dir, finished, file_dict))
     script.post('dump')
     finished.wait()
 
-    generate_ipa(destination_dir, ipa_name)
+    generate_ipa(destination_dir, ipa_name, file_dict)
 
     if session:
         session.detach()
 
 
-def generate_ipa(path: str, display_name: str) -> None:
-    print(f'Generating "{display_name}.ipa"...')
+def generate_ipa(path: str, display_name: str, file_dict: dict[str, str]) -> None:
+    print(f'\nGenerating "{display_name}.ipa"...')
     try:
         app_name = file_dict.pop('app')
         for key, value in file_dict.items():
@@ -185,7 +180,6 @@ def generate_ipa(path: str, display_name: str) -> None:
         #shutil.rmtree(path)
     except Exception as e:
         print(e)
-        finished.set()
     print(f'Successfully generated "{display_name}.ipa"!')
 
 
