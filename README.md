@@ -6,9 +6,21 @@ It pulls a decrypted IPA from a jailbroken device.
 ## Usage
 
  1. Install [frida](http://www.frida.re/) on device
- 2. `sudo pip install -r requirements.txt --upgrade`
- 3. Run usbmuxd/iproxy SSH forwarding over USB (Default 2222 -> 22). e.g. `iproxy 2222 22`
- 4. Run ./dump.py `Display name` or `Bundle identifier`
+ 2. Clone this repo: `git clone https://github.com/paivao/frida-ios-dump-2`
+ 3. Install Python requirements: `sudo pip install -r requirements.txt --upgrade`
+ 4. If Frida 17 or newer, install Frida Obj-C Bridge: `npm install frida-objc-bridge`
+ 5. Run usbmuxd/iproxy SSH forwarding over USB (Default 2222 -> 22). e.g. `iproxy 2222 22`
+ 6. Run ./dump.py `Display name` or `Bundle identifier`
+
+Note, if you configured password different from the default, you can pass it as argument, or get an hidden prompt for it using `-k` or `--ask`.
+
+I recommend to use an virtualenv for steps 1 and 2, to not broke system packages.
+To do so, just run:
+
+1. Run `python -m venv venv` on the project folder
+2. Run `source bin/env/activate` on that folder.
+
+And voilà. If you close the terminal or restart system, just run the second command again, in the folder you created the virtual env folder (first command).
 
 For SSH/SCP make sure you have your public key added to the target device's ~/.ssh/authorized_keys file.
 
