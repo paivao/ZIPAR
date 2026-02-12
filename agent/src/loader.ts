@@ -1,6 +1,6 @@
 import ObjC from 'frida-objc-bridge';
 
-import throwIfError from './error.ts';
+import throwIfError from './error.js';
 
 function _loadFramework(frameworkPath: ObjC.Object): void {
   const defaultManager = ObjC.classes.NSFileManager.defaultManager();

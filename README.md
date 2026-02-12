@@ -1,13 +1,19 @@
-# frida-ios-dump-2
-This repository is a fork from AloneMonkey's [frida-ios-dump](https://github.com/AloneMonkey/frida-ios-dump).
+# ZIPAR
 
-It pulls a decrypted IPA from a jailbroken device.
+The Zip IPA Reconstructor (or Zip IPA Retriever, if you prefer).
+
+This project re-creates an IPA from an installed Application in an jailbroken iOS device.
+
+This project started as a fork of the famous [**frida-ios-dump**](https://github.com/AloneMonkey/frida-ios-dump)
+
+> The name ZIPAR came as it is an foreignism in portuguese language, that literally means "to zip".
 
 ## Usage
 
- 1. Install [frida](http://www.frida.re/) on device
- 2. Clone this repo: `git clone https://github.com/paivao/frida-ios-dump-2`
- 3. Install Python requirements: `sudo pip install -r requirements.txt --upgrade`
+1. Install [frida](http://www.frida.re/) on device
+2. Clone this repo: `git clone https://github.com/paivao/ZIPAR`
+3. Optionally, 
+3. Install Python requirements: `sudo pip install -r requirements.txt --upgrade`
  4. If Frida 17 or newer, install Frida Obj-C Bridge: `npm install frida-objc-bridge`
  5. Run usbmuxd/iproxy SSH forwarding over USB (Default 2222 -> 22). e.g. `iproxy 2222 22`
  6. Run ./dump.py `Display name` or `Bundle identifier`
