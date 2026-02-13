@@ -183,8 +183,18 @@ function _sendFile(filePath: string, relativePath: string): void {
   send({ end: relativePath })
 }
 
+function correctPath(lastComponent: ObjC.Object, path: ObjC.Object): string {
+  const combined = lastComponent.stringByAppend
+}
+
 export default function loadAllFiles(appPath: ObjC.Object, moduleMap: Map<string, Module>): void {
   const defaultManager = ObjC.classes.NSFileManager.defaultManager();
+  const lastComponent = appPath.lastPathComponent();
+  const correctPath = (path: ObjC.Object): string => {
+    const combined = lastComponent.stringByAppendingPathComponent_(path);
+    return combined.toString();
+  }
+  send({ directory: lastComponent.toString() });
   const enumerator = defaultManager.enumeratorAtPath_(appPath);
   const isDirPtr = Memory.alloc(Process.pointerSize);
   while (true) {
@@ -196,19 +206,19 @@ export default function loadAllFiles(appPath: ObjC.Object, moduleMap: Map<string
     defaultManager.fileExistsAtPath_isDirectory_(fullPath, isDirPtr);
     // If we got a directory
     if (isDirPtr.readU8() == 1) {
-      send({ directory: file.toString() });
+      send({ directory: correctPath(file) });
       continue;
     }
     const mod = moduleMap.get(fullPath.toString());
     if (mod !== undefined) {
-      _parseAndSendModule(mod, file.toString());
+      _parseAndSendModule(mod, correctPath(file));
       continue;
     }
     if (fullPath.hasSuffix_(".dylib")) {
       const mod = Module.load(fullPath.toString());
-      _parseAndSendModule(mod, file.toString());
+      _parseAndSendModule(mod, correctPath(file));
       continue;
     }
-    _sendFile(fullPath.toString(), file.toString())
+    _sendFile(fullPath.toString(), correctPath(file))
   }
 }
