@@ -4,9 +4,6 @@ import argparse
 
 DESCRIPTION = """ZIPAR (Zip IPA Retriever), by Rafael Paiva.
 It generate an IPA file based on installed App on jailbroken iOS device using Frida.
-It supports connection via USB or Remote connection to Frida server.
-
-This project is based on AloneMonkey's frida-ios-dump (https://github.com/AloneMonkey/frida-ios-dump)
 """
 
 
@@ -29,6 +26,12 @@ class Configuration:
     def should_add_remote(self) -> bool:
         return self.is_remote and self.port > 0
 
+    def get_app_ipa_name(self, app_name: str) -> str:
+        ipa_file = self.output_file or app_name
+        if not ipa_file.endswith(".ipa"):
+            ipa_file += '.ipa'
+        return ipa_file
+
 
 def cli_args() -> Configuration:
     parser = argparse.ArgumentParser(description=DESCRIPTION)
@@ -41,6 +44,8 @@ def cli_args() -> Configuration:
     parser.add_argument('-R', '--remote', action='store_true',
                         dest='is_remote',
                         help="Use remote connection (defaults to USB)")
+    parser.add_argument('-o', '--output', dest='output_file',
+                        help="File name (and path) to output IPA")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument('--list-devices', action='store_true',
                        help="List connected devices and exit.")

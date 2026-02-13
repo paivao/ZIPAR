@@ -1,14 +1,13 @@
 import ObjC from 'frida-objc-bridge';
-import { relative } from 'path';
 
 const O_RDONLY = 0;
-const FOUR_K = 4 * 1024;
+const F64 = 64 * 1024;
 
 const MACH_64_HEADER_SIZE = 32;
 const MACH_HEADER_SIZE = 28;
 
 const SEEK_SET = 0;
-const SEEK_CUR = 1;
+//const SEEK_CUR = 1;
 const SEEK_END = 2;
 
 const FAT_MAGIC = 0xCAFEBABE;
@@ -17,16 +16,16 @@ const MH_MAGIC = 0xFEEDFACE;
 const MH_CIGAM = 0xCEFAEDFE;
 const MH_MAGIC_64 = 0xFEEDFACF;
 const MH_CIGAM_64 = 0xCFFAEDFE;
-const LC_SEGMENT = 0x1;
-const LC_SEGMENT_64 = 0x19;
+//const LC_SEGMENT = 0x1;
+//const LC_SEGMENT_64 = 0x19;
 const LC_ENCRYPTION_INFO = 0x21;
 const LC_ENCRYPTION_INFO_64 = 0x2C;
 
-const buffer = Memory.alloc(FOUR_K);
+const buffer = Memory.alloc(F64);
 
 const open = new NativeFunction(Module.findGlobalExportByName("open") ?? NULL, "int", ["pointer", "int", "int"]);
 const read = new NativeFunction(Module.findGlobalExportByName("read") ?? NULL, "int", ["int", "pointer", "int"]);
-const write = new NativeFunction(Module.findGlobalExportByName("write") ?? NULL, "int", ["int", "pointer", "int"]);
+//const write = new NativeFunction(Module.findGlobalExportByName("write") ?? NULL, "int", ["int", "pointer", "int"]);
 const lseek = new NativeFunction(Module.findGlobalExportByName("lseek") ?? NULL, "int64", ["int", "int64", "int"]);
 const close = new NativeFunction(Module.findGlobalExportByName("close") ?? NULL, "int", ["int"]);
 const strerror_r = new NativeFunction(Module.findGlobalExportByName("strerror_r") ?? NULL, "int", ["int", "pointer", "size_t"]);
@@ -48,7 +47,7 @@ function swap32(value: number): number {
 function sendData(name: string, handle: number, length: number, start: number = 0) {
   let remaining = length;
   while (remaining > 0) {
-    const bytesRead = read(handle, buffer, Math.min(FOUR_K, remaining))
+    const bytesRead = read(handle, buffer, Math.min(F64, remaining))
     if (bytesRead == -1) throw error();
     send({ partial: name, offset: start, size: bytesRead }, buffer.readByteArray(bytesRead));
     remaining -= bytesRead;
@@ -59,7 +58,7 @@ function sendData(name: string, handle: number, length: number, start: number = 
 function sendMemory(name: string, memory: NativePointer, length: number, start: number = 0) {
   let offset = 0;
   while (offset < length) {
-    const bytesRead = Math.min(FOUR_K, length - offset)
+    const bytesRead = Math.min(F64, length - offset)
     send({ partial: name, offset: start, size: bytesRead }, memory.add(offset).readByteArray(bytesRead));
     offset += bytesRead;
     start += bytesRead;
@@ -99,25 +98,25 @@ function _detectFatMachOffsets(handle: number, moduleAddr: NativePointer): [numb
   return [0, origfileSize];
 }
 
-function _detectEncryptedMachO(modAddr: NativePointer, is64bit: boolean): [number,number,number]|null {
-    const ncmds = modAddr.add(16).readU32();
-    let off = is64bit ? MACH_64_HEADER_SIZE : MACH_HEADER_SIZE; // starts after mach-o header
-    for (let i = 0; i < ncmds; i++) {
-      const cmd = modAddr.add(off).readU32();
-      const cmdsize = modAddr.add(off + 4).readU32();
-      // According to this (https://github.com/subdiox/UnFairPlay/blob/master/unfairplay.c),
-      // there should be only one LC_ENCRYPTION header
-      // If you encounter an error, please file an issue
-      if (cmd == LC_ENCRYPTION_INFO || cmd == LC_ENCRYPTION_INFO_64) {
-        return [
-          off + 16,
-          modAddr.add(off + 8).readU32(),
-          modAddr.add(off + 12).readU32(),
-        ];
-      }
-      off += cmdsize;
+function _detectEncryptedMachO(modAddr: NativePointer, is64bit: boolean): [number, number, number] | null {
+  const ncmds = modAddr.add(16).readU32();
+  let off = is64bit ? MACH_64_HEADER_SIZE : MACH_HEADER_SIZE; // starts after mach-o header
+  for (let i = 0; i < ncmds; i++) {
+    const cmd = modAddr.add(off).readU32();
+    const cmdsize = modAddr.add(off + 4).readU32();
+    // According to this (https://github.com/subdiox/UnFairPlay/blob/master/unfairplay.c),
+    // there should be only one LC_ENCRYPTION header
+    // If you encounter an error, please file an issue
+    if (cmd == LC_ENCRYPTION_INFO || cmd == LC_ENCRYPTION_INFO_64) {
+      return [
+        off + 16,
+        modAddr.add(off + 8).readU32(),
+        modAddr.add(off + 12).readU32(),
+      ];
     }
-    return null;
+    off += cmdsize;
+  }
+  return null;
 }
 
 function _parseAndSendModule(module: Module, relativePath: string): void {
@@ -138,7 +137,7 @@ function _parseAndSendModule(module: Module, relativePath: string): void {
 
   // Detect and extract only current Mach-O
   const [fileStart, fileSize] = _detectFatMachOffsets(handle, module.base);
-  send({start: relativePath, size: fileSize});
+  send({ start: relativePath, size: fileSize });
 
   const _encryption = _detectEncryptedMachO(module.base, is64bit);
   lseek(handle, fileStart, SEEK_SET);
@@ -154,10 +153,10 @@ function _parseAndSendModule(module: Module, relativePath: string): void {
     buffer.writeU64(0);
     sendMemory(relativePath, buffer, 4, offsetCryptId);
     // ... and adjust file pointer
-    lseek(handle, offsetCryptId+4, SEEK_SET);
+    lseek(handle, offsetCryptId + 4, SEEK_SET);
     // Now send all file data until encrypted part of binary
-    const delta1 = offsetCrypt - (offsetCryptId+4);
-    sendData(relativePath, handle, delta1, offsetCryptId+4);
+    const delta1 = offsetCrypt - (offsetCryptId + 4);
+    sendData(relativePath, handle, delta1, offsetCryptId + 4);
     // Now send data loaded from binary
     sendMemory(relativePath, module.base.add(offsetCrypt), lengthCrypt, offsetCrypt);
     // Delta 2 now is first byte passed encrypted part
@@ -190,14 +189,14 @@ export default function loadAllFiles(appPath: ObjC.Object, moduleMap: Map<string
   const isDirPtr = Memory.alloc(Process.pointerSize);
   while (true) {
     const file = enumerator.nextObject()
-    if (file.isNull())
+    if (file === null || file.isNull())
       break;
     const fullPath = appPath.stringByAppendingPathComponent_(file);
     isDirPtr.writePointer(NULL);
     defaultManager.fileExistsAtPath_isDirectory_(fullPath, isDirPtr);
     // If we got a directory
-    if (isDirPtr.readULong() === 1) {
-      send({ directory: fullPath.toString() });
+    if (isDirPtr.readU8() == 1) {
+      send({ directory: file.toString() });
       continue;
     }
     const mod = moduleMap.get(fullPath.toString());

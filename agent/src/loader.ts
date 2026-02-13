@@ -25,5 +25,5 @@ export default function loadFrameworks(appBundle: ObjC.Object): void {
     throw `AppBundle is not an NSBundle class. It is ${appBundle.$className}`
   }
   _loadFramework(appBundle.privateFrameworksPath())
-  _loadFramework(appBundle.FrameworksPath())
+  _loadFramework(appBundle.sharedFrameworksPath())
 }

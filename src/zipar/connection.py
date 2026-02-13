@@ -40,8 +40,11 @@ class Connection:
                 return app.pid
         return -1
 
-    def connect_to_app(self) -> frida.core.Session:
-        pid = self.conf.pid
+    def __get_app_name(self, pid: int) -> str:
+        return self.device.enumerate_processes([pid])[0].name
+
+    def connect_to_app(self) -> (frida.core.Session, str):
+        pid: int = self.conf.pid
         if self.conf.frontmost:
             pid = self.device.get_frontmost_application().pid
         spawned = False
@@ -53,4 +56,4 @@ class Connection:
         session = self.device.attach(pid)
         if spawned:
             self.device.resume(pid)
-        return session
+        return session, self.__get_app_name(pid)
