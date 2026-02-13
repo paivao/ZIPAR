@@ -20,6 +20,11 @@ After that, just install using pip:
 
 `pip install zipar`
 
+Another option is to clone this repo, and to install via **pip**, or run via **uv**.
+
+- `git clone https://github.com/paivao/ZIPAR`
+- `pip install .`
+
 ## Usage
 
 This tool connects to iOS device using Frida. By default, it uses USB, but can use an remote connection too.
