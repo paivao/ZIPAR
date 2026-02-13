@@ -57,7 +57,7 @@ function sendData(name: string, handle: number, length: number, start: number = 
 
 function sendPatch(name: string, memory: NativePointer, length: number, start: number, cryptIdPos: number) {
   let offset = 0;
-  send({beginPatch: name, patchSize: length})
+  send({beginPatch: name, patchSize: length, cryptIdPos: cryptIdPos})
   while (offset < length) {
     const bytesRead = Math.min(F64, length - offset)
     send({ patchPartial: name, fileOffset: start, size: bytesRead }, memory.add(offset).readByteArray(bytesRead));
@@ -102,27 +102,32 @@ function _detectFatMachOffsets(handle: number, moduleAddr: NativePointer): [numb
 function _detectEncryptedMachO(modAddr: NativePointer, is64bit: boolean): [number, number, number] | null {
   const ncmds = modAddr.add(16).readU32();
   let off = is64bit ? MACH_64_HEADER_SIZE : MACH_HEADER_SIZE; // starts after mach-o header
+  let ret: [number, number, number]|null = null;
   for (let i = 0; i < ncmds; i++) {
     const cmd = modAddr.add(off).readU32();
-    const cmdsize = modAddr.add(off + 4).readU32();
+    const cmdSize = modAddr.add(off + 4).readU32();
     // According to this (https://github.com/subdiox/UnFairPlay/blob/master/unfairplay.c),
     // there should be only one LC_ENCRYPTION header
     // If you encounter an error, please file an issue
-    if (cmd == LC_ENCRYPTION_INFO || cmd == LC_ENCRYPTION_INFO_64) {
-      return [
+    if (cmd === LC_ENCRYPTION_INFO || cmd === LC_ENCRYPTION_INFO_64) {
+      if (ret !== null) {
+        throw 'Found more than one encrypted segment!'
+      }
+      ret = [
         off + 16,
         modAddr.add(off + 8).readU32(),
         modAddr.add(off + 12).readU32(),
       ];
     }
-    off += cmdsize;
+    off += cmdSize;
   }
-  return null;
+  return ret;
 }
 
 function _parseAndSendModule(module: Module, relativePath: string): void {
   let is64bit = false;
   const magic = module.base.readU32();
+
 
   if (magic == MH_MAGIC || magic == MH_CIGAM) {
     is64bit = false;

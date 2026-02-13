@@ -4,6 +4,7 @@ from pathlib import Path
 import threading
 from tqdm import tqdm
 
+ZERO_U32 = b'\0\0\0\0'
 
 def receive_file_message(t: tqdm, e: threading.Event, base_path: Path, payload: dict, data):
     if dir := payload.get('directory'):
@@ -29,8 +30,13 @@ def receive_file_message(t: tqdm, e: threading.Event, base_path: Path, payload: 
     elif file_path := payload.get('beginPatch'):
         path = base_path / file_path
         patchSize = payload['patchSize']
+        cryptIdOffset = payload['cryptIdPos']
+        with path.open('r+b') as fh:
+            fh.seek(cryptIdOffset, os.SEEK_SET)
+            fh.write(ZERO_U32)
         t.set_description(f"Patching {file_path}")
         t.reset(patchSize)
+        print(f"Beginning pathing {path}, {cryptIdOffset}, {patchSize}")
     elif file_path := payload.get('patchPartial'):
         path = base_path / file_path
         fileOffset = payload['fileOffset']
@@ -43,6 +49,8 @@ def receive_file_message(t: tqdm, e: threading.Event, base_path: Path, payload: 
         t.set_description(f"Finished {file_path}")
     elif _ := payload.get('done'):
         e.set()
+    elif info := payload.get('info'):
+       print(f"INFO: {info}")
     else:
         raise Exception(f"unrecognized message: {payload}")
     

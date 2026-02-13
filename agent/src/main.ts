@@ -5,11 +5,10 @@ import loadAllFiles from './reconstructor.js';
 Process.findModuleByName('Foundation')?.ensureInitialized();
 
 function getAppModuleMap(appPath: string): Map<string, Module> {
-  const modules = Process.enumerateModules().filter(mod => {
-    mod.path.includes(appPath);
-  });
+  const modules = Process.enumerateModules().filter(mod => mod.path.includes(appPath));
+  console.log(`Modules len: ${modules.length}`)
   const modMap = new Map<string, Module>();
-  modules.forEach(m => modMap.set(m.path, m))
+  modules.forEach(m => {modMap.set(m.path, m)})
   return modMap;
 }
 
