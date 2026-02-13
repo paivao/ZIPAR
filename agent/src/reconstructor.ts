@@ -55,11 +55,12 @@ function sendData(name: string, handle: number, length: number, start: number = 
   }
 }
 
-function sendMemory(name: string, memory: NativePointer, length: number, start: number = 0) {
+function sendPatch(name: string, memory: NativePointer, length: number, start: number, cryptIdPos: number) {
   let offset = 0;
+  send({beginPatch: name, patchSize: length})
   while (offset < length) {
     const bytesRead = Math.min(F64, length - offset)
-    send({ partial: name, offset: start, size: bytesRead }, memory.add(offset).readByteArray(bytesRead));
+    send({ patchPartial: name, fileOffset: start, size: bytesRead }, memory.add(offset).readByteArray(bytesRead));
     offset += bytesRead;
     start += bytesRead;
   }
@@ -141,30 +142,11 @@ function _parseAndSendModule(module: Module, relativePath: string): void {
 
   const _encryption = _detectEncryptedMachO(module.base, is64bit);
   lseek(handle, fileStart, SEEK_SET);
-  if (_encryption === null) {
-    // Not Encrypted, just dump full file (or specific mach-o)
-    sendData(relativePath, handle, fileSize);
-  }
-  else {
+  sendData(relativePath, handle, fileSize);
+  if (_encryption !== null) {
     const [offsetCryptId, offsetCrypt, lengthCrypt] = _encryption;
-    // Fist, send original data from beginning until CryptId command position
-    sendData(relativePath, handle, offsetCryptId);
-    // Then, send 4 zeroed bytes to ignore it ...
-    buffer.writeU64(0);
-    sendMemory(relativePath, buffer, 4, offsetCryptId);
-    // ... and adjust file pointer
-    lseek(handle, offsetCryptId + 4, SEEK_SET);
-    // Now send all file data until encrypted part of binary
-    const delta1 = offsetCrypt - (offsetCryptId + 4);
-    sendData(relativePath, handle, delta1, offsetCryptId + 4);
-    // Now send data loaded from binary
-    sendMemory(relativePath, module.base.add(offsetCrypt), lengthCrypt, offsetCrypt);
-    // Delta 2 now is first byte passed encrypted part
-    const delta2 = offsetCrypt + lengthCrypt;
-    // adjust file pointer
-    lseek(handle, delta2, SEEK_SET);
-    // And send final part
-    sendData(relativePath, handle, fileSize - delta2, delta2);
+    // If it's encrypted, send the patch
+    sendPatch(relativePath, module.base.add(offsetCrypt), lengthCrypt, offsetCrypt, offsetCryptId)
   }
   close(handle);
   send({ end: relativePath })
@@ -181,10 +163,6 @@ function _sendFile(filePath: string, relativePath: string): void {
   sendData(relativePath, handle, fileSize);
   close(handle);
   send({ end: relativePath })
-}
-
-function correctPath(lastComponent: ObjC.Object, path: ObjC.Object): string {
-  const combined = lastComponent.stringByAppend
 }
 
 export default function loadAllFiles(appPath: ObjC.Object, moduleMap: Map<string, Module>): void {
