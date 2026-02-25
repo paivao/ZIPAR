@@ -15,7 +15,6 @@ function _loadFramework(frameworkPath: ObjC.Object): void {
     const fullPath = frameworkPath.stringByAppendingPathComponent_(frameworkDir);
     const bundle = ObjC.classes.NSBundle.bundleWithPath_(fullPath);
     if (bundle === null || bundle.isNull()) {
-      console.warn(`Framework directory is not bundle: ${frameworkDir.toString()}`)
       continue;
     }
     const loaded = bundle.load() as boolean;

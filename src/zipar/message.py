@@ -36,7 +36,6 @@ def receive_file_message(t: tqdm, e: threading.Event, base_path: Path, payload: 
             fh.write(ZERO_U32)
         t.set_description(f"Patching {file_path}")
         t.reset(patchSize)
-        print(f"Beginning pathing {path}, {cryptIdOffset}, {patchSize}")
     elif file_path := payload.get('patchPartial'):
         path = base_path / file_path
         fileOffset = payload['fileOffset']
