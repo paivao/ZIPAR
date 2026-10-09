@@ -1,8 +1,8 @@
 from tabulate import tabulate
+
 from .args import cli_args
 from .connection import Connection
 from .reconstructor import reconstruct
-
 
 BANNER = """ZIPAR
 =====
@@ -14,16 +14,23 @@ def main():
     config = cli_args()
     conn = Connection(config)
     if config.list_devices:
-        device_table = [("OK", "ID", "Name", "Type")]
+        device_table = [("Status", "ID", "Name", "Type")]
         for dev in conn.list_devices():
-            device_table.append((not dev.is_lost, dev.id, dev.name, dev.type))
-        print(tabulate(device_table, headers='firstrow', tablefmt='grid'))
+            device_table.append(
+                (
+                    "OK" if dev.is_lost else "Off",
+                    dev.id or "-",
+                    dev.name or "-",
+                    dev.type or "-",
+                )
+            )
+        print(tabulate(device_table, headers="firstrow", tablefmt="grid"))
         return
     if config.list_apps:
-        app_table = [('PID', 'Name', 'Bundle')]
+        app_table = [("PID", "Name", "Bundle")]
         for app in conn.list_apps():
-            app_table.append((app.pid, app.name, app.identifier))
-        print(tabulate(app_table, headers='firstrow', tablefmt='grid'))
+            app_table.append((str(app.pid), app.name, app.identifier))
+        print(tabulate(app_table, headers="firstrow", tablefmt="grid"))
         return
     # The main action, to use the session to get the app
     session, app_name = conn.connect_to_app()
